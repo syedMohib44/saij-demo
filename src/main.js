@@ -1,12 +1,17 @@
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 // === Scene Setup ===
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x202020);
 
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+const camera = new THREE.PerspectiveCamera(
+  50,
+  window.innerWidth / window.innerHeight,
+  0.1,
+  100
+);
 camera.position.set(0, 1.6, 3);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -24,90 +29,172 @@ scene.add(new THREE.AmbientLight(0x404040));
 const loader = new GLTFLoader();
 let mixer;
 let mouthMeshes = [];
-let morphTargets = {};
 let audio, audioCtx, analyser, dataArray;
 
 // === Load Avatar ===
-loader.load('/avatar.glb', (gltf) => {
+loader.load(
+  "/avatar.glb",
+  (gltf) => {
     const model = gltf.scene;
     model.scale.set(1, 1, 1);
     scene.add(model);
 
     if (gltf.animations && gltf.animations.length > 0) {
-        mixer = new THREE.AnimationMixer(model);
-        const action = mixer.clipAction(gltf.animations[0]);
-        action.play();
+      mixer = new THREE.AnimationMixer(model);
+      const action = mixer.clipAction(gltf.animations[0]);
+      action.play();
     }
 
     // Find all skinned meshes with morph targets
     model.traverse((obj) => {
-        if (obj.isSkinnedMesh && obj.morphTargetDictionary && obj.morphTargetInfluences) {
-            console.log(obj.name, obj.morphTargetDictionary);
-            // Only include mouth/jaw related meshes
-            if (obj.name.includes("Head") || obj.name.includes("Teeth") || obj.name.includes("Tongue")) {
-                mouthMeshes.push(obj);
-            }
+      if (
+        obj.isSkinnedMesh &&
+        obj.morphTargetDictionary &&
+        obj.morphTargetInfluences
+      ) {
+        console.log(obj.name, obj.morphTargetDictionary);
+        // Only include mouth/jaw related meshes
+        if (
+          obj.name.includes("Head") ||
+          obj.name.includes("Teeth") ||
+          obj.name.includes("Tongue")
+        ) {
+          mouthMeshes.push(obj);
         }
+      }
+    });
+  },
+  undefined,
+  (err) => console.error(err)
+);
+
+// === Lipsync Function ===
+async function startLipSync(audioBlob) {
+  // Play backend audio
+  const audioUrl = URL.createObjectURL(audioBlob);
+  audio = new Audio(audioUrl);
+  audio.crossOrigin = "anonymous";
+
+  // Create AudioContext
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = audioCtx.createMediaElementSource(audio);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  src.connect(analyser);
+  analyser.connect(audioCtx.destination);
+  dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+  await audioCtx.resume();
+  audio.play();
+}
+
+// === Record + Backend Integration ===
+let mediaRecorder;
+let audioChunks = [];
+let isRecording = false;
+
+// 🎙️ Button UI
+const recordBtn = document.createElement("button");
+recordBtn.textContent = "🎙️ Start Recording";
+recordBtn.style.position = "absolute";
+recordBtn.style.top = "20px";
+recordBtn.style.left = "20px";
+recordBtn.style.padding = "10px 20px";
+recordBtn.style.background = "#0a84ff";
+recordBtn.style.color = "white";
+recordBtn.style.border = "none";
+recordBtn.style.borderRadius = "8px";
+recordBtn.style.cursor = "pointer";
+recordBtn.style.fontSize = "16px";
+document.body.appendChild(recordBtn);
+
+recordBtn.onclick = async () => {
+  if (!isRecording) {
+    startRecording();
+  } else {
+    stopRecording();
+  }
+};
+
+async function startRecording() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(stream);
+  audioChunks = [];
+
+  mediaRecorder.ondataavailable = (event) => {
+    audioChunks.push(event.data);
+  };
+
+  mediaRecorder.onstop = async () => {
+    const blob = new Blob(audioChunks, { type: "audio/webm" });
+    const formData = new FormData();
+    formData.append("audio", blob, "input.webm");
+
+    // 🔥 Send to backend
+    const response = await fetch("http://localhost:8001/speech", {
+      method: "POST",
+      body: formData,
     });
 
-    // Start lip sync
-    startLipSync();
-}, undefined, (err) => console.error(err));
+    const audioBlob = await response.blob();
+    await startLipSync(audioBlob);
+  };
 
-// === Audio & Lipsync Setup ===
-function startLipSync() {
-    audio = new Audio('/speech.mp3');
-    audio.crossOrigin = 'anonymous';
-    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  mediaRecorder.start();
+  recordBtn.textContent = "⏹ Stop Recording";
+  isRecording = true;
+}
 
-    const src = audioCtx.createMediaElementSource(audio);
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 1024;
-    src.connect(analyser);
-    analyser.connect(audioCtx.destination);
-
-    dataArray = new Uint8Array(analyser.frequencyBinCount);
-    audio.play();
-    audioCtx.resume();
+function stopRecording() {
+  mediaRecorder.stop();
+  recordBtn.textContent = "🎙️ Start Recording";
+  isRecording = false;
 }
 
 // === Animation Loop ===
 const clock = new THREE.Clock();
 
 function animate() {
-    requestAnimationFrame(animate);
-    const delta = clock.getDelta();
-    if (mixer) mixer.update(delta);
+  requestAnimationFrame(animate);
+  const delta = clock.getDelta();
+  if (mixer) mixer.update(delta);
 
-    // Analyze audio loudness
-    if (analyser && mouthMeshes.length > 0) {
-        analyser.getByteFrequencyData(dataArray);
-        const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-        const intensity = Math.min(avg / 150, 1); // Normalize
+  // Analyze audio loudness → drive visemes
+  if (analyser && mouthMeshes.length > 0) {
+    analyser.getByteFrequencyData(dataArray);
+    const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+    const intensity = Math.min(avg / 150, 1); // Normalize 0–1
 
-        // Apply intensity to mouth-related visemes
-        mouthMeshes.forEach((mesh) => {
-            const dict = mesh.morphTargetDictionary;
-            const inf = mesh.morphTargetInfluences;
+    // Apply intensity to mouth-related visemes
+    mouthMeshes.forEach((mesh) => {
+      const dict = mesh.morphTargetDictionary;
+      const inf = mesh.morphTargetInfluences;
 
-            // Focus on visemes for open-mouth sounds
-            const openTargets = ['mouthOpen', 'viseme_aa', 'viseme_O', 'viseme_U', 'viseme_E', 'viseme_I'];
-            openTargets.forEach((name) => {
-                if (dict[name] !== undefined) {
-                    inf[dict[name]] = intensity;
-                }
-            });
-        });
-    }
+      const openTargets = [
+        "mouthOpen",
+        "viseme_aa",
+        "viseme_O",
+        "viseme_U",
+        "viseme_E",
+        "viseme_I",
+      ];
+      openTargets.forEach((name) => {
+        if (dict[name] !== undefined) {
+          inf[dict[name]] = intensity;
+        }
+      });
+    });
+  }
 
-    controls.update();
-    renderer.render(scene, camera);
+  controls.update();
+  renderer.render(scene, camera);
 }
 
 animate();
 
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
+// === Handle Resize ===
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
 });

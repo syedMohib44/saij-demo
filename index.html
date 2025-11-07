@@ -9,13 +9,44 @@
         margin: 0;
         overflow: hidden;
         background: #000;
+        font-family: sans-serif;
       }
-      canvas {
-        display: block;
+      #ui {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        text-align: center;
+      }
+      button {
+        background: #1e1e1e;
+        color: white;
+        border: 1px solid #555;
+        border-radius: 8px;
+        padding: 10px 20px;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      #status {
+        color: white;
+        margin-top: 8px;
+      }
+      audio {
+        display: none;
       }
     </style>
   </head>
   <body>
+    <!-- Three.js code -->
     <script type="module" src="/src/main.js"></script>
+
+    <!-- STS UI -->
+    <div id="ui">
+      <button id="recordBtn">🎙️ Start Recording</button>
+      <div id="status"></div>
+      <audio id="speechPlayer" controls></audio>
+    </div>
+
+    <script type="module" src="/src/voice.js"></script>
   </body>
 </html>
