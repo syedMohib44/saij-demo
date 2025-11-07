@@ -43,28 +43,17 @@ async function queryClaude(userText) {
   const completion = await anthropic.messages.create({
     model: "claude-sonnet-4-5",
     max_tokens: 250,
-    system: `
-You are a helpful assistant.
-IMPORTANT: Respond using plain text only.
-Do NOT use any markdown, *, #, _, ~, or other formatting characters.
-Do not add bullet points or numbering symbols.
-Do not use emojis or special characters.
-Keep the text clean and easy to read.
-    `,
-    messages: [
-      {
-        role: "user",
-        content: userText,
-      },
-    ],
+    messages: [{ role: "user", content: `Reply conversationally to: ${userText}. Please avoid *, #, and any special characters.` }],
   });
 
   const reply =
     completion?.content?.[0]?.text?.trim() ||
     "Sorry, I couldn’t come up with a reply.";
+
   console.log("💬 Claude reply:", reply);
-  return text.replace(/[*_~`#\-]/g, "").replace(/\n+/g, " ").trim();
+  return reply;
 }
+
 
 // === Helper: Generate speech buffer via ElevenLabs (Memory-Only) ===
 async function generateSpeechBuffer(text) {

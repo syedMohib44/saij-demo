@@ -2,7 +2,6 @@
   "scripts": {
     "dev": "vite --host"
   },
-  
   "dependencies": {
     "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^9.4.0",
@@ -10,10 +9,13 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "form-data": "^4.0.4",
+    "microsoft-cognitiveservices-speech-sdk": "^1.46.0",
     "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
     "three": "^0.181.0",
-    "vite": "^6.4.1"
+    "vite": "^6.4.1",
+    "webrtcvad": "^1.0.1",
+    "yarn": "^1.22.22"
   },
   "name": "@penta-swap/saij-demo",
   "version": "1.0.0",
