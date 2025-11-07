@@ -70,23 +70,27 @@ loader.load(
 
 // === Lipsync Function ===
 async function startLipSync(audioBlob) {
-  // Play backend audio
-  const audioUrl = URL.createObjectURL(audioBlob);
-  audio = new Audio(audioUrl);
-  audio.crossOrigin = "anonymous";
-
-  // Create AudioContext
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const src = audioCtx.createMediaElementSource(audio);
-  analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 1024;
-  src.connect(analyser);
-  analyser.connect(audioCtx.destination);
-  dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-  await audioCtx.resume();
-  audio.play();
-}
+    const arrayBuffer = await audioBlob.arrayBuffer();
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: "interactive" });
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+  
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+  
+    source.connect(analyser);
+    analyser.connect(audioCtx.destination);
+  
+    await audioCtx.resume();
+    source.start();
+  
+    // Optional: stop when buffer ends
+    source.onended = () => console.log("Audio playback ended");
+  }
+  
 
 // === Record + Backend Integration ===
 let mediaRecorder;
