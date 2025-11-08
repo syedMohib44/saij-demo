@@ -59,7 +59,7 @@ async function queryClaude(userText) {
 async function generateSpeechBuffer(text) {
   console.log("🎤 Generating speech via ElevenLabs...");
 
-  const voiceId = "JBFqnCBsd6RMkjVDRZzb"; // change voice if desired
+  const voiceId = "jJ7bugNb8349LQJVSlb0"; // change voice if desired
 
   const response = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
