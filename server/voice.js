@@ -6,60 +6,54 @@ import FormData from "form-data";
 import dotenv from "dotenv";
 dotenv.config();
 
-const __dirname = path.resolve();
-
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// === Helper: Transcribe audio via ElevenLabs ===
+// === Transcribe audio via ElevenLabs ===
 async function transcribeAudio(audioFilePath) {
   const formData = new FormData();
   const audioBuffer = fs.readFileSync(audioFilePath);
   formData.append("file", audioBuffer, { filename: "input.wav" });
-  formData.append("model_id", "scribe_v1"); // ✅ Fixed model ID
+  formData.append("model_id", "scribe_v1");
 
   const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
     method: "POST",
-    headers: {
-      "xi-api-key": process.env.ELEVENLABS_API_KEY,
-    },
+    headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY },
     body: formData,
   });
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`ElevenLabs STT failed: ${response.status} - ${errText}`);
+    throw new Error(`STT failed: ${response.status} - ${errText}`);
   }
 
   const data = await response.json();
   return data.text;
 }
 
-// === Helper: Query Claude ===
+// === Query Claude ===
 async function queryClaude(userText) {
-  console.log("🧠 Sending to Claude...");
-
   const completion = await anthropic.messages.create({
     model: "claude-sonnet-4-5",
     max_tokens: 250,
-    messages: [{ role: "user", content: `Reply conversationally to: ${userText}. Please avoid *, #, and any special characters.` }],
+    messages: [
+      {
+        role: "user",
+        content: `Reply conversationally to: ${userText}. Please avoid *, #, and any special characters.`,
+      },
+    ],
   });
 
-  const reply =
+  return (
     completion?.content?.[0]?.text?.trim() ||
-    "Sorry, I couldn’t come up with a reply.";
-
-  console.log("💬 Claude reply:", reply);
-  return reply;
+    "Sorry, I couldn’t come up with a reply."
+  );
 }
 
-
-// === Helper: Generate speech buffer via ElevenLabs (Memory-Only) ===
+// === Generate speech buffer via ElevenLabs ===
 async function generateSpeechBuffer(text) {
-  console.log("🎤 Generating speech via ElevenLabs...");
-
-  const voiceId = "jJ7bugNb8349LQJVSlb0"; // change voice if desired
+  const voiceId = "jJ7bugNb8349LQJVSlb0";
 
   const response = await fetch(
     `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
@@ -79,41 +73,24 @@ async function generateSpeechBuffer(text) {
 
   if (!response.ok) {
     const errText = await response.text();
-    throw new Error(`ElevenLabs TTS failed: ${response.status} - ${errText}`);
+    throw new Error(`TTS failed: ${response.status} - ${errText}`);
   }
 
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
 }
 
-// === 🎙️ Main Speech-to-Speech Function (Optimized) ===
-export async function speechToSpeech(audioFilePath, saveToFile = true) {
-  try {
-    // 1️⃣ Transcribe user audio
-    const userText = await transcribeAudio(audioFilePath);
+// === Main: In-memory Speech-to-Speech ===
+export async function speechToSpeech(audioFilePath) {
+  // 1️⃣ Transcribe user audio
+  const userText = await transcribeAudio(audioFilePath);
 
-    // 2️⃣ Generate Claude response
-    const aiReply = await queryClaude(userText);
+  // 2️⃣ Query Claude
+  const aiReply = await queryClaude(userText);
 
-    // 3️⃣ Generate speech buffer for AI reply
-    const speechBuffer = await generateSpeechBuffer(aiReply);
+  // 3️⃣ Generate ElevenLabs TTS audio buffer
+  const speechBuffer = await generateSpeechBuffer(aiReply);
 
-    if (saveToFile) {
-      // Optional: Save buffer to file
-      const outputDir = path.join(__dirname, "outputs");
-      if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
-
-      const timestamp = Date.now();
-      const outputFile = path.join(outputDir, `response_${timestamp}.mp3`);
-      fs.writeFileSync(outputFile, speechBuffer);
-      console.log("✅ Voice file saved:", outputFile);
-      return outputFile;
-    } else {
-      // Return buffer directly for streaming to client
-      return speechBuffer;
-    }
-  } catch (err) {
-    console.error("❌ STS Error:", err);
-    throw err;
-  }
+  // 4️⃣ Return in-memory buffer
+  return { buffer: speechBuffer, aiReply };
 }
